@@ -1,0 +1,7 @@
+tensorflow==1.0.1 # we dont need this if grcp client wasnt dependent
+opencv-python
+grpcio>=0.15.0
+grpcio-tools>=0.15.0
+flask==0.12
+gunicorn==19.7.1
+gevent==1.2.2
