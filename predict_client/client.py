@@ -1,21 +1,32 @@
 import numpy as np
 import tensorflow as tf
 import grpc
+import logging
 
-# import predict_pb2
 from predict_client.predict_pb2 import PredictRequest
-# import prediction_service_pb2
 from predict_client.prediction_service_pb2 import PredictionServiceStub
 
+logger = logging.getLogger(__name__)
 
-def predict(img,  model_name, model_version, host='localhost', port='9000'):
+
+def predict(img,  model_name, model_version, host='localhost', port='9000', is_batch_shaped=True):
     REQUEST_TIMEOUT = 10
     host = host + ':' + port
 
-    tensor_shape = (1,) + img.shape
+    tensor_shape = img.shape
 
-    features_tensor_proto = tf.contrib.util.make_tensor_proto(img.reshape(tensor_shape),
-                                                              dtype=tf.float32, shape=tensor_shape)
+    logger.debug('Image shape: ' + str(tensor_shape))
+
+    if is_batch_shaped:
+        tensor_shape = (1,) + tensor_shape
+
+    logger.debug('Tensor shape: ' + str(tensor_shape))
+
+    if model_name == 'incv4' or model_name == 'res152':
+        features_tensor_proto = tf.contrib.util.make_tensor_proto(img, shape=tensor_shape)
+    else:
+        features_tensor_proto = tf.contrib.util.make_tensor_proto(img,
+                                                                  dtype=tf.float32, shape=tensor_shape)
 
     # Create gRPC client and request
     channel = grpc.insecure_channel(host)
@@ -33,9 +44,7 @@ def predict(img,  model_name, model_version, host='localhost', port='9000'):
     # Send request
     result = stub.Predict(request, timeout=REQUEST_TIMEOUT)
 
-    pred_label = np.argmax(result.outputs['scores'].float_val)
-
-    return str(pred_label)
+    return list(result.outputs['scores'].float_val)
 
 
 if __name__ == '__main__':

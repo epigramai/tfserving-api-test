@@ -1,15 +1,15 @@
 # Python, flask and various api code imports
-import os
 import logging
 from flask import Flask, request, Response, jsonify
 import socket
 import cv2
 
 from predict_client import client
+from util.ports import get_port_mapping
 
 # Logger initialization
 # This must happen before any calls to debug(), info(), etc.
-logging.basicConfig(level=logging.INFO,
+logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
 
 # In each file/module, do this to get the module name in the logs
@@ -18,23 +18,9 @@ logger = logging.getLogger(__name__)
 # API initialization
 app = Flask(__name__)
 
-MODEL_NAME = 'mnist'
+MODELS = ['mnist', 'res152', 'incv3', 'incv4']
 MODEL_VERSION = 1
-
-MNIST_HOST = 'localhost'
-MNIST_PORT = '9000'
-
-if 'MNIST_HOST' in os.environ:
-    MNIST_HOST = os.environ['MNIST_HOST']
-    logger.info('Using: ' + MNIST_HOST)
-else:
-    logger.info('Using localhost')
-
-if 'MNIST_PORT' in os.environ:
-    MNIST_PORT = os.environ['MNIST_PORT']
-    logger.info('Using: ' + MNIST_PORT)
-else:
-    logger.info('Using 9000')
+PORT_MAPPING = get_port_mapping(MODELS)
 
 
 @app.route('/predict', methods=['POST'])
@@ -45,20 +31,46 @@ def predict():
         logger.info('Missing image parameter')
         return Response('Missing image parameter', 400)
 
+    if 'model' not in request.form:
+        logger.info('Missing image model parameter')
+        return Response('Missing model parameter', 400)
+
+    requested_model = request.form['model']
+
+    if requested_model not in MODELS:
+        logger.info('Model ' + requested_model + ' not supported!')
+        return Response('Model ' + requested_model + ' not supported!', 400)
+
+    logger.info('Requested model: ' + requested_model)
+
+    host, port = PORT_MAPPING[requested_model]
+
     # Write image to disk
     with open('request.png', 'wb') as f:
         f.write(request.files['image'].read())
 
-    img = cv2.imread('request.png', 0)
+    if requested_model == 'mnist':
+        img = cv2.imread('request.png', 0)
+        logger.debug('Loaded request image shape: ' + str(img.shape))
 
-    prediction = client.predict(img.reshape((img.shape + (1,))), MODEL_NAME, MODEL_VERSION,
-                                host=MNIST_HOST, port=MNIST_PORT)
+        prediction = client.predict(img.reshape((img.shape + (1,))), requested_model, MODEL_VERSION,
+                                    host=host, port=port)
+    elif requested_model in ['incv3', 'incv4', 'res152']:
+        img = cv2.imread('request.png')
+        logger.debug('Loaded request image shape: ' + str(img.shape))
 
-    logger.info('Prediction mnist image: ' + str(prediction))
+        prediction = client.predict(img, requested_model, MODEL_VERSION,
+                                    host=host, port=port, is_batch_shaped=False)
+    else:
+        logger.warning('Check the if-else block above, this should not happen...')
+        return Response('This should not happen...', 500)
+
+    logger.info('Prediction of length:' + str(len(prediction)))
 
     ''' Convert the dict to json and return response '''
     return jsonify(
         prediction=prediction,
+        prediction_length=len(prediction),
         hostname=str(socket.gethostname())
     )
 

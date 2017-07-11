@@ -1,0 +1,51 @@
+version: "3"
+
+services:
+    api:
+        image: epigramai/tfserving-api-test:latest
+        deploy:
+            restart_policy:
+                condition: any
+        ports:
+            - 80:5000
+        environment:
+            - MNIST_HOST=mnist
+            - MNIST_PORT=9000
+            - INCV3_HOST=incv3
+            - INCV3_PORT=9000
+            - INCV4_HOST=incv4
+            - INCV4_PORT=9000
+            - RES152_HOST=res152
+            - RES152_PORT=9000
+    mnist:
+        image: epigramai/model-server:serve
+        command: ["--port=9000", "--model_name=mnist", "--model_base_path=/models/mnist_cnn"]
+        deploy:
+            restart_policy:
+                condition: any
+        volumes:
+            - /models/:/models/
+    incv3:
+        image: epigramai/model-server:serve
+        command: ["--port=9000", "--model_name=incv3", "--model_base_path=/models/incv3_2048"]
+        deploy:
+            restart_policy:
+                condition: any
+        volumes:
+            - /models/:/models/
+    incv4:
+        image: epigramai/model-server:serve
+        command: ["--port=9000", "--model_name=incv4", "--model_base_path=/models/incv4_1536"]
+        deploy:
+            restart_policy:
+                condition: any
+        volumes:
+            - /models/:/models/
+    res152:
+        image: epigramai/model-server:serve
+        command: ["--port=9000", "--model_name=res152", "--model_base_path=/models/res152_2048"]
+        deploy:
+            restart_policy:
+                condition: any
+        volumes:
+            - /models/:/models/
