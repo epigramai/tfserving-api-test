@@ -1,11 +1,14 @@
-# Python, flask and various api code imports
+import os
 import logging
 from flask import Flask, request, Response, jsonify
 import socket
 import cv2
 
-from predict_client import client
-from util.ports import get_port_mapping
+# TODO remove if not needed
+# grpcio>=0.15.0
+# grpcio-tools>=0.15.0
+
+from predict_client.prod_client import PredictClient
 
 # Logger initialization
 # This must happen before any calls to debug(), info(), etc.
@@ -18,9 +21,16 @@ logger = logging.getLogger(__name__)
 # API initialization
 app = Flask(__name__)
 
-MODELS = ['mnist', 'res152', 'incv3', 'incv4']
 MODEL_VERSION = 1
-PORT_MAPPING = get_port_mapping(MODELS)
+
+incv4_host = 'localhost:9000'
+
+if 'INCV4_HOST' in os.environ:
+    logger.info('Using ' + str(os.environ['INCV4_HOST']) + ' as host.')
+    incv4_host = os.environ['INCV4_HOST']
+
+
+hosts = {'incv4': PredictClient(incv4_host, 'incv4', 1)}
 
 
 @app.route('/predict', methods=['POST'])
@@ -37,35 +47,24 @@ def predict():
 
     requested_model = request.form['model']
 
-    if requested_model not in MODELS:
+    if requested_model not in hosts:
         logger.info('Model ' + requested_model + ' not supported!')
         return Response('Model ' + requested_model + ' not supported!', 400)
 
     logger.info('Requested model: ' + requested_model)
 
-    host, port = PORT_MAPPING[requested_model]
+    client = hosts[requested_model]
 
     # Write image to disk
-    with open('request.png', 'wb') as f:
+    with open('request.jpg', 'wb') as f:
         f.write(request.files['image'].read())
 
-    if requested_model == 'mnist':
-        img = cv2.imread('request.png', 0)
-        logger.debug('Loaded request image shape: ' + str(img.shape))
+    img = cv2.imread('request.jpg')
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-        prediction = client.predict(img.reshape((img.shape + (1,))), requested_model, MODEL_VERSION,
-                                    host=host, port=port)
-    elif requested_model in ['incv3', 'incv4', 'res152']:
-        img = cv2.imread('request.png')
-        logger.debug('Loaded request image shape: ' + str(img.shape))
+    prediction = client.predict(img)
 
-        prediction = client.predict(img, requested_model, MODEL_VERSION,
-                                    host=host, port=port, is_batch_shaped=False)
-    else:
-        logger.warning('Check the if-else block above, this should not happen...')
-        return Response('This should not happen...', 500)
-
-    logger.info('Prediction of length:' + str(len(prediction)))
+    logger.info('Got prediction of length: ' + str(len(prediction)))
 
     ''' Convert the dict to json and return response '''
     return jsonify(
