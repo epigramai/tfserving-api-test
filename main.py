@@ -3,10 +3,7 @@ import logging
 from flask import Flask, request, Response, jsonify
 import socket
 import cv2
-
-# TODO remove if not needed
-# grpcio>=0.15.0
-# grpcio-tools>=0.15.0
+import numpy as np
 
 from predict_client.prod_client import PredictClient
 
@@ -21,16 +18,21 @@ logger = logging.getLogger(__name__)
 # API initialization
 app = Flask(__name__)
 
-MODEL_VERSION = 1
+MODEL_VERSION = 2
 
-incv4_host = 'localhost:9000'
+incv3_host = 'localhost:9000'
+fashion_host = 'localhost:9001'
 
-if 'INCV4_HOST' in os.environ:
-    logger.info('Using ' + str(os.environ['INCV4_HOST']) + ' as host.')
-    incv4_host = os.environ['INCV4_HOST']
+if 'INCV3_HOST' in os.environ:
+    logger.info('Using ' + str(os.environ['INCV3_HOST']) + ' as incv3 host.')
+    incv3_host = os.environ['INCV3_HOST']
 
+if 'FASH_HOST' in os.environ:
+    logger.info('Using ' + str(os.environ['FASH_HOST']) + ' as fash host.')
+    fashion_host = os.environ['FASH_HOST']
 
-hosts = {'incv4': PredictClient(incv4_host, 'incv4', 1)}
+clients = {'incv3': PredictClient(incv3_host, 'incv3', MODEL_VERSION),
+           'fashion': PredictClient(fashion_host, 'fashion', 1)}
 
 
 @app.route('/predict', methods=['POST'])
@@ -41,35 +43,30 @@ def predict():
         logger.info('Missing image parameter')
         return Response('Missing image parameter', 400)
 
-    if 'model' not in request.form:
-        logger.info('Missing image model parameter')
-        return Response('Missing model parameter', 400)
-
-    requested_model = request.form['model']
-
-    if requested_model not in hosts:
-        logger.info('Model ' + requested_model + ' not supported!')
-        return Response('Model ' + requested_model + ' not supported!', 400)
-
-    logger.info('Requested model: ' + requested_model)
-
-    client = hosts[requested_model]
-
     # Write image to disk
     with open('request.jpg', 'wb') as f:
         f.write(request.files['image'].read())
 
     img = cv2.imread('request.jpg')
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img = cv2.resize(img, (299, 299))
 
-    prediction = client.predict(img)
+    img = img / 255
+    img -= 0.5
+    img *= 2
 
-    logger.info('Got prediction of length: ' + str(len(prediction)))
+    prediction = clients['incv3'].predict(np.array([img]))
+    print(len(prediction))
+
+    fashion_pred = clients['fashion'].predict(np.array([prediction]))
+    print(len(fashion_pred))
+
+    fash_cat = np.argmax(fashion_pred)
+    logger.info('Predicted: ' + str(fash_cat))
 
     ''' Convert the dict to json and return response '''
     return jsonify(
-        prediction=prediction,
-        prediction_length=len(prediction),
+        prediction=str(fash_cat),
         hostname=str(socket.gethostname())
     )
 

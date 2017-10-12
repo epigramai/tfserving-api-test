@@ -2,17 +2,26 @@ version: "3"
 
 services:
     api:
-        image: epigramai/tfserving-api-test:x
+        image: api
         deploy:
             restart_policy:
                 condition: any
         ports:
             - 5000:5000
         environment:
-            - INCV4_HOST=incv4:9000
-    incv4:
+            - INCV3_HOST=incv3:9000
+            - FASH_HOST=fash:9000
+    incv3:
         image: epigramai/model-server:light
-        command: ["--port=9000", "--model_name=incv4", "--model_base_path=/models/incv4_1536"]
+        command: ["--port=9000", "--model_name=incv3", "--model_base_path=/models/incv3_bottleneck"]
+        deploy:
+            restart_policy:
+                condition: any
+        volumes:
+            - ./models:/models/
+    fash:
+        image: epigramai/model-server:light
+        command: ["--port=9000", "--model_name=fashion", "--model_base_path=/models/final_layers"]
         deploy:
             restart_policy:
                 condition: any
